@@ -1,0 +1,21 @@
+# Java / Maven
+minecraft-plugin/target/
+*.class
+
+# Python
+discord-bot/__pycache__/
+discord-bot/**/__pycache__/
+discord-bot/.venv/
+discord-bot/venv/
+*.pyc
+
+# Secrets and local config
+discord-bot/.env
+discord-bot/config.yml
+minecraft-plugin/src/main/resources/config.yml.local
+
+# OS / editor
+.DS_Store
+.idea/
+*.iml
+.vscode/

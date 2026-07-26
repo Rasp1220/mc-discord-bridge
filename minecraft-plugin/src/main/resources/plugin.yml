@@ -1,0 +1,6 @@
+name: MCDiscordBridge
+version: '1.0.0'
+main: com.mcdiscordbridge.DiscordBridgePlugin
+api-version: '1.21'
+author: mc-discord-bridge
+description: Bidirectional chat sync and start/stop notifications between this server and Discord.
