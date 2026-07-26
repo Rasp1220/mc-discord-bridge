@@ -1,0 +1,23 @@
+# Connection to the Discord bot's bridge WebSocket server.
+bridge:
+  host: "127.0.0.1"
+  port: 8765
+  # Shared secret token. Must match the discord-bot's config.yml -> bridge.secret exactly.
+  secret: "CHANGE_ME_SHARED_SECRET"
+  # Reconnect backoff (seconds) used while the Discord bot is unreachable.
+  reconnect:
+    initial-delay: 5
+    max-delay: 60
+  # Milliseconds to wait for the socket to flush when sending the shutdown notice.
+  shutdown-flush-timeout-ms: 3000
+
+server:
+  # Friendly name for this server, included in start/stop notifications.
+  name: "Minecraft Server"
+
+format:
+  # Placeholders: {player} {message}
+  minecraft-to-discord: "**{player}**: {message}"
+  # Placeholders: {user} {message}. Color codes (&) are applied to the template
+  # itself before substitution, so untrusted content can never inject colors.
+  discord-to-minecraft: "&9[Discord] &b{user}&f: {message}"

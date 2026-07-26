@@ -1,0 +1,41 @@
+"""Entry point: wires the Discord bot and the bridge WebSocket server together."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+
+from bridge.config import load_config
+from bridge.discord_bot import DiscordBridgeBot
+from bridge.ws_server import BridgeServer
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("bridge.main")
+
+
+async def main() -> None:
+    config = load_config()
+
+    bot = DiscordBridgeBot(config)
+    server = BridgeServer(
+        config,
+        on_chat=bot.relay_minecraft_chat,
+        on_server_start=bot.notify_server_start,
+        on_server_stop=bot.notify_server_stop,
+    )
+    bot.bridge_server = server
+
+    await server.start()
+    try:
+        await bot.start(config.token)
+    finally:
+        await server.stop()
+        if not bot.is_closed():
+            await bot.close()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Shutting down.")

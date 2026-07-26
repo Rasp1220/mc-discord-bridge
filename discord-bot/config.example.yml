@@ -1,0 +1,29 @@
+# Copy this file to config.yml and fill in the values for your setup.
+# The Discord bot token itself is NOT stored here - see .env.example.
+
+discord:
+  # Channel that Minecraft chat is bridged to/from.
+  chat_channel_id: 0
+  # Channel that receives server start/stop notifications. May be the same
+  # channel as chat_channel_id.
+  notify_channel_id: 0
+  # Discord messages starting with this prefix are treated as bot commands
+  # and are never relayed to Minecraft.
+  command_prefix: "!"
+
+bridge:
+  # Interface/port the bridge WebSocket server listens on. The
+  # minecraft-plugin's config.yml -> bridge.host/port must point here.
+  host: "0.0.0.0"
+  port: 8765
+  # Shared secret token. Must match minecraft-plugin's config.yml -> bridge.secret exactly.
+  secret: "CHANGE_ME_SHARED_SECRET"
+  # Seconds to wait for the auth message after a plugin connects before
+  # dropping the connection.
+  auth_timeout: 10
+
+format:
+  # Placeholders: {player} {message}
+  minecraft_to_discord: "**{player}**: {message}"
+  # Placeholders: {user} {message}
+  discord_to_minecraft: "[Discord] [{user}] {message}"
