@@ -59,6 +59,20 @@ class DiscordBridgeBot(commands.Bot):
     async def notify_server_stop(self, server_name: str) -> None:
         await self._send_status_embed(server_name, started=False)
 
+    async def notify_player_join(self, player: str) -> None:
+        await self._send_presence_notice(player, self._config.format.player_join)
+
+    async def notify_player_leave(self, player: str) -> None:
+        await self._send_presence_notice(player, self._config.format.player_leave)
+
+    async def _send_presence_notice(self, player: str, template: str) -> None:
+        channel = self._get_text_channel(self._config.discord.notify_channel_id)
+        if channel is None:
+            return
+        safe_player = discord.utils.escape_markdown(discord.utils.escape_mentions(player))
+        text = template.format(player=safe_player)
+        await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
+
     async def _send_status_embed(self, server_name: str, started: bool) -> None:
         channel = self._get_text_channel(self._config.discord.notify_channel_id)
         if channel is None:

@@ -62,6 +62,8 @@ Both sides are configured with the same `bridge.secret` shared token.
 | `chat`         | `player`, `message`              | A player sent a chat message in-game.      |
 | `server_start` | `server_name`                    | The server finished starting up.           |
 | `server_stop`  | `server_name`                    | The server is shutting down.               |
+| `player_join`  | `player`                         | A player joined the server.                |
+| `player_leave` | `player`                         | A player left the server.                  |
 
 Example:
 
@@ -97,6 +99,12 @@ responsible for applying its own display formatting from its local config:
   through `discord.utils.escape_mentions` / `escape_markdown`, and messages
   are sent with `allowed_mentions=AllowedMentions.none()`, so an in-game
   message can never ping `@everyone`, a role, or a user.
+
+`player_join`/`player_leave` notices are formatted the same way as chat, via
+`format.player_join`/`format.player_leave` (`config.yml`, Discord bot side
+only), e.g. `"\U0001F7E2 **{player}** が参加しました"`. Player names go
+through the same escaping and are sent to `discord.notify_channel_id` with
+`allowed_mentions=AllowedMentions.none()`.
 
 ## Loop Prevention
 

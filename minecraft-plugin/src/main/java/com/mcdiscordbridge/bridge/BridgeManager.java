@@ -99,6 +99,16 @@ public final class BridgeManager {
         sendBestEffort(Json.object("type", "server_start", "server_name", config.serverName()));
     }
 
+    /** Notifies Discord that a player has joined the server. */
+    public void sendPlayerJoin(String player) {
+        sendBestEffort(Json.object("type", "player_join", "player", player));
+    }
+
+    /** Notifies Discord that a player has left the server. */
+    public void sendPlayerLeave(String player) {
+        sendBestEffort(Json.object("type", "player_leave", "player", player));
+    }
+
     private void sendBestEffort(String json) {
         BridgeWebSocketClient current = client.get();
         if (current != null && current.isOpen() && current.isAuthenticated()) {

@@ -29,6 +29,8 @@ class BridgeSettings:
 class FormatSettings:
     minecraft_to_discord: str
     discord_to_minecraft: str
+    player_join: str
+    player_leave: str
 
 
 @dataclass(frozen=True)
@@ -84,5 +86,7 @@ def load_config(config_path: str | Path = "config.yml", env_path: str | Path = "
         format=FormatSettings(
             minecraft_to_discord=str(format_raw.get("minecraft_to_discord", "**{player}**: {message}")),
             discord_to_minecraft=str(format_raw.get("discord_to_minecraft", "[Discord] [{user}] {message}")),
+            player_join=str(format_raw.get("player_join", "\N{LARGE GREEN CIRCLE} **{player}** が参加しました")),
+            player_leave=str(format_raw.get("player_leave", "\N{LARGE RED CIRCLE} **{player}** が退出しました")),
         ),
     )
