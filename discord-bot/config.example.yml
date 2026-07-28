@@ -27,3 +27,6 @@ format:
   minecraft_to_discord: "**{player}**: {message}"
   # Placeholders: {user} {message}
   discord_to_minecraft: "[Discord] [{user}] {message}"
+  # Placeholder: {player}. Sent to notify_channel_id when a player joins/leaves.
+  player_join: "\U0001F7E2 **{player}** が参加しました"
+  player_leave: "\U0001F534 **{player}** が退出しました"

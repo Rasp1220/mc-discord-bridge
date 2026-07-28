@@ -17,6 +17,7 @@ Minecraft (Java Edition, Paper/Purpur v1.21.11) と Discord 間で、チャッ�
 - **Discord → マイクラ**: 指定チャンネルの投稿をサーバー全体チャットへ転送
   （Bot自身の発言・コマンドプレフィックス付きメッセージは無視し、ループを防止）
 - **起動/停止通知**: サーバー起動完了時・シャットダウン時に Discord へ Embed 通知
+- **入退室通知**: プレイヤーのログイン/ログアウトを指定チャンネルへ通知
 - **障害耐性**: Discord Bot がオフラインでもマイクラ側の処理はブロックされず、
   自動的に再接続を試みます
 
@@ -58,7 +59,8 @@ mvn package
 2. Minecraft サーバーを起動する → 起動完了時に Discord へ通知が届くこと、
    プラグインログに認証成功のログが出ることを確認
 3. ゲーム内チャット・Discord チャンネル双方でメッセージが転送されることを確認
-4. Minecraft サーバーを停止する → Discord へ停止通知が届くことを確認
+4. プレイヤーがサーバーに参加/退出する → Discord へ入退室通知が届くことを確認
+5. Minecraft サーバーを停止する → Discord へ停止通知が届くことを確認
 
 ## ディレクトリ構成
 
@@ -71,7 +73,7 @@ mc-discord-bridge/
 │       ├── DiscordBridgePlugin.java
 │       ├── bridge/             # WebSocket クライアント・再接続管理
 │       ├── config/             # config.yml の型付きラッパー
-│       ├── listener/           # チャットイベント購読
+│       ├── listener/           # チャット・入退室イベント購読
 │       └── util/                # JSON / フォーマット補助
 └── discord-bot/                # Python Bot
     ├── main.py

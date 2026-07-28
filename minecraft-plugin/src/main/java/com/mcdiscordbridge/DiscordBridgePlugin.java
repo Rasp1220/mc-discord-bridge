@@ -3,6 +3,7 @@ package com.mcdiscordbridge;
 import com.mcdiscordbridge.bridge.BridgeManager;
 import com.mcdiscordbridge.config.BridgeConfig;
 import com.mcdiscordbridge.listener.ChatListener;
+import com.mcdiscordbridge.listener.PlayerConnectionListener;
 import org.bukkit.event.server.ServerLoadEvent;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -24,6 +25,7 @@ public final class DiscordBridgePlugin extends JavaPlugin implements Listener {
 
         bridgeManager = new BridgeManager(this, config);
         getServer().getPluginManager().registerEvents(new ChatListener(bridgeManager), this);
+        getServer().getPluginManager().registerEvents(new PlayerConnectionListener(bridgeManager), this);
         getServer().getPluginManager().registerEvents(this, this);
 
         bridgeManager.connect();

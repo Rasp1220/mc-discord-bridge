@@ -23,6 +23,7 @@ logger = logging.getLogger("bridge.ws_server")
 
 ChatCallback = Callable[[str, str], Awaitable[None]]
 StatusCallback = Callable[[str], Awaitable[None]]
+PlayerCallback = Callable[[str], Awaitable[None]]
 
 
 class BridgeServer:
@@ -32,11 +33,15 @@ class BridgeServer:
         on_chat: ChatCallback,
         on_server_start: StatusCallback,
         on_server_stop: StatusCallback,
+        on_player_join: PlayerCallback,
+        on_player_leave: PlayerCallback,
     ) -> None:
         self._config = config
         self._on_chat = on_chat
         self._on_server_start = on_server_start
         self._on_server_stop = on_server_stop
+        self._on_player_join = on_player_join
+        self._on_player_leave = on_player_leave
         self._app = web.Application()
         self._app.router.add_get("/", self._handle_ws)
         self._runner: Optional[web.AppRunner] = None
@@ -137,5 +142,9 @@ class BridgeServer:
             await self._on_server_start(str(data.get("server_name", "Minecraft Server")))
         elif msg_type == protocol.TYPE_SERVER_STOP:
             await self._on_server_stop(str(data.get("server_name", "Minecraft Server")))
+        elif msg_type == protocol.TYPE_PLAYER_JOIN:
+            await self._on_player_join(str(data.get("player", "?")))
+        elif msg_type == protocol.TYPE_PLAYER_LEAVE:
+            await self._on_player_leave(str(data.get("player", "?")))
         else:
             logger.debug("Ignoring unknown bridge message type: %s", msg_type)

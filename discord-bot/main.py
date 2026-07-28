@@ -22,6 +22,8 @@ async def main() -> None:
         on_chat=bot.relay_minecraft_chat,
         on_server_start=bot.notify_server_start,
         on_server_stop=bot.notify_server_stop,
+        on_player_join=bot.notify_player_join,
+        on_player_leave=bot.notify_player_leave,
     )
     bot.bridge_server = server
 
