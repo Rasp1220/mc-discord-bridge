@@ -68,6 +68,24 @@ def test_links_list_parses_multiple_servers(tmp_path):
     assert by_id["creative"].secret == "creative-secret"
 
 
+def test_empty_links_list_is_rejected_not_silently_ignored(tmp_path):
+    # An empty links: must not fall through to the legacy single-server path,
+    # which would surface a confusing "bridge.secret has not been set" error.
+    config_path, env_path = _write(
+        tmp_path,
+        """
+        links: []
+        discord:
+          chat_channel_id: 111
+        bridge:
+          secret: "my-secret"
+        """,
+    )
+
+    with pytest.raises(RuntimeError, match="non-empty list"):
+        load_config(config_path, env_path)
+
+
 def test_links_with_duplicate_server_id_rejected(tmp_path):
     config_path, env_path = _write(
         tmp_path,

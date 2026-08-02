@@ -11,6 +11,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.net.URI;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
@@ -41,6 +42,12 @@ public final class BridgeManager {
      */
     private final Deque<TimestampedMessage> outboundQueue = new ArrayDeque<>();
 
+    /** Guards the "now queueing" notice so it is logged once per disconnect, not once per message. */
+    private final AtomicBoolean queueingLogged = new AtomicBoolean(false);
+
+    /** Serializes {@link #flushQueue()} so two flushes can't send the same queue head twice. */
+    private final Object flushLock = new Object();
+
     private record TimestampedMessage(long enqueuedAtNanos, String json) {
     }
 
@@ -69,6 +76,7 @@ public final class BridgeManager {
 
     void onConnected() {
         reconnectDelaySeconds.set(config.reconnectInitialDelaySeconds());
+        queueingLogged.set(false);
         flushQueue();
     }
 
@@ -125,65 +133,96 @@ public final class BridgeManager {
     }
 
     /**
-     * Sends a message if currently connected and authenticated; otherwise (or
-     * if the send itself throws) queues it so it is not lost, to be flushed
-     * once the connection to the Discord bot is (re)established.
+     * Sends a message if it can go out immediately, otherwise queues it so it
+     * is not lost, to be flushed once the connection to the Discord bot is
+     * (re)established. A message is only sent directly when the queue is
+     * empty; while a flush is still draining, new messages queue behind it so
+     * they can never overtake older ones.
      */
     private void sendBestEffort(String json) {
         BridgeWebSocketClient current = client.get();
         if (current != null && current.isOpen() && current.isAuthenticated()) {
+            synchronized (outboundQueue) {
+                if (!outboundQueue.isEmpty()) {
+                    enqueueLocked(json);
+                    return;
+                }
+            }
             try {
                 current.send(json);
                 return;
             } catch (Exception e) {
-                logger.info("[MCDiscordBridge] Failed to send bridge message, queueing: " + e.getMessage());
+                logger.warning("[MCDiscordBridge] Failed to send bridge message, queueing: " + e.getMessage());
             }
         }
-        enqueue(json);
-    }
-
-    private void enqueue(String json) {
         synchronized (outboundQueue) {
-            if (outboundQueue.size() >= config.maxQueueSize()) {
-                outboundQueue.pollFirst();
-            }
-            outboundQueue.addLast(new TimestampedMessage(System.nanoTime(), json));
-            logger.info("[MCDiscordBridge] Discord bot not connected; queued message (queue size="
-                    + outboundQueue.size() + ").");
+            enqueueLocked(json);
         }
     }
 
-    /** Flushes queued messages in order, dropping any that are too stale. Called on successful auth. */
+    /** Appends to the queue, evicting the oldest entry if it is full. Caller must hold outboundQueue. */
+    private void enqueueLocked(String json) {
+        if (outboundQueue.size() >= config.maxQueueSize()) {
+            outboundQueue.pollFirst();
+        }
+        outboundQueue.addLast(new TimestampedMessage(System.nanoTime(), json));
+        // Only log the first message queued per disconnect, so a busy server
+        // with the bot offline doesn't flood the console.
+        if (queueingLogged.compareAndSet(false, true)) {
+            logger.info("[MCDiscordBridge] Discord bot unavailable; queueing messages (up to "
+                    + config.maxQueueSize() + ") until it reconnects.");
+        }
+    }
+
+    /**
+     * Flushes queued messages in order, dropping any that are too stale.
+     * Called on successful auth.
+     *
+     * <p>Each message stays at the head of the queue until it has actually
+     * been sent, so the queue never looks empty while a send is still in
+     * flight - that is what lets {@link #sendBestEffort(String)} decide to
+     * queue behind an in-progress flush instead of overtaking it. The
+     * {@code flushLock} keeps two flushes from sending the same head twice.
+     */
     private void flushQueue() {
-        long maxAgeNanos = (long) (config.maxQueueAgeSeconds() * 1_000_000_000L);
-        for (;;) {
-            TimestampedMessage next;
-            synchronized (outboundQueue) {
-                next = outboundQueue.pollFirst();
-            }
-            if (next == null) {
-                return;
-            }
-            long age = System.nanoTime() - next.enqueuedAtNanos();
-            if (age > maxAgeNanos) {
-                logger.info("[MCDiscordBridge] Dropping stale queued message (age=" + (age / 1_000_000_000L) + "s).");
-                continue;
-            }
-            BridgeWebSocketClient current = client.get();
-            if (current == null || !current.isOpen() || !current.isAuthenticated()) {
+        synchronized (flushLock) {
+            long maxAgeNanos = (long) (config.maxQueueAgeSeconds() * 1_000_000_000L);
+            int sent = 0;
+            int dropped = 0;
+            for (;;) {
+                TimestampedMessage next;
                 synchronized (outboundQueue) {
-                    outboundQueue.addFirst(next);
+                    next = outboundQueue.peekFirst();
                 }
-                return;
-            }
-            try {
-                current.send(next.json());
-            } catch (Exception e) {
-                logger.info("[MCDiscordBridge] Failed to flush queued message, re-queueing: " + e.getMessage());
+                if (next == null) {
+                    break;
+                }
+                if (System.nanoTime() - next.enqueuedAtNanos() > maxAgeNanos) {
+                    synchronized (outboundQueue) {
+                        outboundQueue.pollFirst();
+                    }
+                    dropped++;
+                    continue;
+                }
+                BridgeWebSocketClient current = client.get();
+                if (current == null || !current.isOpen() || !current.isAuthenticated()) {
+                    break;
+                }
+                try {
+                    current.send(next.json());
+                } catch (Exception e) {
+                    logger.warning("[MCDiscordBridge] Failed to flush queued message, will retry: "
+                            + e.getMessage());
+                    break;
+                }
                 synchronized (outboundQueue) {
-                    outboundQueue.addFirst(next);
+                    outboundQueue.pollFirst();
                 }
-                return;
+                sent++;
+            }
+            if (sent > 0 || dropped > 0) {
+                logger.info("[MCDiscordBridge] Flushed " + sent + " queued message(s), dropped "
+                        + dropped + " stale one(s).");
             }
         }
     }

@@ -38,8 +38,9 @@ class BridgeSettings:
 
 @dataclass(frozen=True)
 class FormatSettings:
+    # Discord -> Minecraft formatting lives in the plugin's own config.yml
+    # (format.discord-to-minecraft); the bot sends that direction unformatted.
     minecraft_to_discord: str
-    discord_to_minecraft: str
     player_join: str
     player_leave: str
 
@@ -54,7 +55,7 @@ class Config:
 
 
 def _validate_secret(secret: str, where: str) -> str:
-    if not secret or secret == "CHANGE_ME_SHARED_SECRET" or secret.startswith("CHANGE_ME"):
+    if not secret or secret.startswith("CHANGE_ME"):
         raise RuntimeError(
             f"{where} has not been set in config.yml - it must match the "
             "corresponding minecraft-plugin instance's config.yml exactly."
@@ -63,8 +64,8 @@ def _validate_secret(secret: str, where: str) -> str:
 
 
 def _parse_links(raw: dict) -> list[LinkSettings]:
-    links_raw = raw.get("links")
-    if links_raw:
+    if "links" in raw:
+        links_raw = raw.get("links")
         if not isinstance(links_raw, list) or not links_raw:
             raise RuntimeError("links must be a non-empty list of server entries.")
 
@@ -155,7 +156,6 @@ def load_config(config_path: str | Path = "config.yml", env_path: str | Path = "
         ),
         format=FormatSettings(
             minecraft_to_discord=str(format_raw.get("minecraft_to_discord", "**{player}**: {message}")),
-            discord_to_minecraft=str(format_raw.get("discord_to_minecraft", "[Discord] [{user}] {message}")),
             player_join=str(format_raw.get("player_join", "\N{LARGE GREEN CIRCLE} **{player}** が参加しました")),
             player_leave=str(format_raw.get("player_leave", "\N{LARGE RED CIRCLE} **{player}** が退出しました")),
         ),

@@ -53,8 +53,9 @@ bridge:
 format:
   # Placeholders: {player} {message}
   minecraft_to_discord: "**{player}**: {message}"
-  # Placeholders: {user} {message}
-  discord_to_minecraft: "[Discord] [{user}] {message}"
+  # Note: the Discord -> Minecraft direction is formatted by the plugin, via
+  # its own config.yml -> format.discord-to-minecraft. There is no
+  # equivalent setting here.
   # Placeholder: {player}. Sent to notify_channel_id when a player joins/leaves.
   player_join: "\U0001F7E2 **{player}** が参加しました"
   player_leave: "\U0001F534 **{player}** が退出しました"

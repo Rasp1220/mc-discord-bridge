@@ -48,11 +48,7 @@ class DiscordBridgeBot(commands.Bot):
             await self.bridge_server.broadcast_to_minecraft(server_id, message.author.display_name, content)
 
     async def relay_minecraft_chat(self, server_id: str, player: str, message_text: str) -> None:
-        link = self._links_by_id.get(server_id)
-        if link is None:
-            logger.warning("Received chat from unknown server_id %r; dropping.", server_id)
-            return
-        channel = self._get_text_channel(link.chat_channel_id)
+        channel = self._channel_for(server_id, notify=False)
         if channel is None:
             return
         safe_player = discord.utils.escape_markdown(discord.utils.escape_mentions(player))
@@ -73,11 +69,7 @@ class DiscordBridgeBot(commands.Bot):
         await self._send_presence_notice(server_id, player, self._config.format.player_leave)
 
     async def _send_presence_notice(self, server_id: str, player: str, template: str) -> None:
-        link = self._links_by_id.get(server_id)
-        if link is None:
-            logger.warning("Received presence notice from unknown server_id %r; dropping.", server_id)
-            return
-        channel = self._get_text_channel(link.notify_channel_id)
+        channel = self._channel_for(server_id, notify=True)
         if channel is None:
             return
         safe_player = discord.utils.escape_markdown(discord.utils.escape_mentions(player))
@@ -85,11 +77,7 @@ class DiscordBridgeBot(commands.Bot):
         await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
 
     async def _send_status_embed(self, server_id: str, server_name: str, started: bool) -> None:
-        link = self._links_by_id.get(server_id)
-        if link is None:
-            logger.warning("Received status notice from unknown server_id %r; dropping.", server_id)
-            return
-        channel = self._get_text_channel(link.notify_channel_id)
+        channel = self._channel_for(server_id, notify=True)
         if channel is None:
             return
         embed = discord.Embed(
@@ -98,6 +86,14 @@ class DiscordBridgeBot(commands.Bot):
             color=discord.Color.green() if started else discord.Color.red(),
         )
         await channel.send(embed=embed)
+
+    def _channel_for(self, server_id: str, notify: bool) -> Optional[discord.abc.Messageable]:
+        """Resolves a server_id to its chat (or notify) channel, or None if unroutable."""
+        link = self._links_by_id.get(server_id)
+        if link is None:
+            logger.warning("Received a message from unknown server_id %r; dropping.", server_id)
+            return None
+        return self._get_text_channel(link.notify_channel_id if notify else link.chat_channel_id)
 
     def _get_text_channel(self, channel_id: int) -> Optional[discord.abc.Messageable]:
         channel = self.get_channel(channel_id)

@@ -22,7 +22,6 @@ def make_config(links, max_queue_size=50, max_queue_age_seconds=30, auth_timeout
         ),
         format=FormatSettings(
             minecraft_to_discord="{player}: {message}",
-            discord_to_minecraft="{user}: {message}",
             player_join="{player} joined",
             player_leave="{player} left",
         ),
