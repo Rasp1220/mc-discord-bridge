@@ -18,20 +18,22 @@ final class BridgeWebSocketClient extends WebSocketClient {
 
     private final BridgeManager manager;
     private final String secret;
+    private final String serverId;
     private final Logger logger;
     private volatile boolean authenticated = false;
 
-    BridgeWebSocketClient(URI serverUri, BridgeManager manager, String secret, Logger logger) {
+    BridgeWebSocketClient(URI serverUri, BridgeManager manager, String secret, String serverId, Logger logger) {
         super(serverUri);
         this.manager = manager;
         this.secret = secret;
+        this.serverId = serverId;
         this.logger = logger;
     }
 
     @Override
     public void onOpen(ServerHandshake handshakeData) {
         authenticated = false;
-        send(Json.object("type", "auth", "token", secret));
+        send(Json.object("type", "auth", "token", secret, "server_id", serverId));
     }
 
     @Override

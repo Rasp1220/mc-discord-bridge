@@ -19,7 +19,11 @@ Minecraft (Java Edition, Paper/Purpur v1.21.11) と Discord 間で、チャッ�
 - **起動/停止通知**: サーバー起動完了時・シャットダウン時に Discord へ Embed 通知
 - **入退室通知**: プレイヤーのログイン/ログアウトを指定チャンネルへ通知
 - **障害耐性**: Discord Bot がオフラインでもマイクラ側の処理はブロックされず、
-  自動的に再接続を試みます
+  自動的に再接続を試みます。切断中のメッセージは破棄せず一定件数キューイングし、
+  再接続時に順番に送信します
+- **複数サーバー対応**: 1つの Discord Bot プロセスで複数の Minecraft サーバーを
+  それぞれ別の Discord チャンネルに橋渡しできます（`server1 ↔ channel1`,
+  `server2 ↔ channel2` など）
 
 ## セットアップ
 
@@ -33,11 +37,29 @@ cp config.example.yml config.yml  # チャンネルID・secret 等を設定
 python main.py
 ```
 
-`config.yml` で設定する項目:
+`config.yml` で設定する項目（1サーバー構成の場合）:
 
 - `discord.chat_channel_id` / `discord.notify_channel_id`: 対象チャンネルID
 - `bridge.host` / `bridge.port`: プラグインが接続してくる待受アドレス
 - `bridge.secret`: プラグイン側と一致させる共有シークレット
+
+複数の Minecraft サーバーをそれぞれ別チャンネルに繋ぎたい場合は、上記の
+`discord.*` / `bridge.secret` の代わりに `links:` セクションを使います
+（`config.example.yml` にコメントアウトされた例があります）。`links:` を
+設定すると `discord.chat_channel_id` 等のスカラー項目は無視されるため、
+両方を混在させないでください。
+
+```yaml
+links:
+  - server_id: "survival"
+    secret: "CHANGE_ME_SURVIVAL_SECRET"
+    chat_channel_id: 111111111111111111
+    notify_channel_id: 111111111111111111
+  - server_id: "creative"
+    secret: "CHANGE_ME_CREATIVE_SECRET"
+    chat_channel_id: 222222222222222222
+    notify_channel_id: 222222222222222222
+```
 
 ### 2. Minecraft プラグイン (`minecraft-plugin/`)
 
@@ -46,14 +68,27 @@ cd minecraft-plugin
 mvn package
 ```
 
-生成された `target/mc-discord-bridge-plugin-1.0.0.jar` をサーバーの `plugins/`
-に配置して起動すると、既定の `config.yml` が生成されます。以下を Discord Bot
-側と一致させてください:
+生成された `target/mc-discord-bridge-plugin-1.0.0.jar` を各 Minecraft サーバーの
+`plugins/` に配置して起動すると、既定の `config.yml` が生成されます。以下を
+Discord Bot 側と一致させてください:
 
 - `bridge.host` / `bridge.port`: Discord Bot の待受アドレス
-- `bridge.secret`: Discord Bot 側と同じ値
+- `bridge.secret`: 対象サーバーに対応する Discord Bot 側の secret
+  （1サーバー構成なら `bridge.secret`、複数サーバー構成なら該当する
+  `links[].secret`）
+- `server.id`: 複数サーバー構成の場合のみ、Discord Bot 側の対応する
+  `links[].server_id` と完全に一致させてください（1サーバー構成では
+  既定値 `"default"` のままで構いません）
 
-### 3. 動作確認
+### 3. テスト（Discord Bot）
+
+```bash
+cd discord-bot
+pip install -r requirements-dev.txt
+pytest
+```
+
+### 4. 動作確認
 
 1. Discord Bot を先に起動する
 2. Minecraft サーバーを起動する → 起動完了時に Discord へ通知が届くこと、
@@ -77,9 +112,10 @@ mc-discord-bridge/
 │       └── util/                # JSON / フォーマット補助
 └── discord-bot/                # Python Bot
     ├── main.py
-    └── bridge/
-        ├── config.py            # config.yml / .env 読み込み
-        ├── ws_server.py         # WebSocket サーバー (aiohttp)
-        ├── discord_bot.py       # discord.py クライアント
-        └── protocol.py          # メッセージ種別定数
+    ├── bridge/
+    │   ├── config.py            # config.yml / .env 読み込み
+    │   ├── ws_server.py         # WebSocket サーバー (aiohttp)
+    │   ├── discord_bot.py       # discord.py クライアント
+    │   └── protocol.py          # メッセージ種別定数
+    └── tests/                  # pytest によるユニットテスト
 ```

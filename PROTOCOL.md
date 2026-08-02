@@ -1,9 +1,17 @@
 # Bridge Communication Protocol
 
-Version: 1.0
+Version: 2.0
 
 This document specifies the WebSocket protocol used between the Minecraft
 plugin (`minecraft-plugin/`) and the Discord bot (`discord-bot/`).
+
+## Changes since 1.0
+
+- The `auth` message gained an optional `server_id` field so the bot can
+  bridge multiple Minecraft servers, each to its own Discord channel, from a
+  single process. See "Multi-Server" below.
+- Delivery is no longer drop-on-disconnect: both sides now hold a small
+  bounded queue and flush it on reconnect. See "Fault Tolerance" below.
 
 ## Roles
 
@@ -13,8 +21,10 @@ plugin (`minecraft-plugin/`) and the Discord bot (`discord-bot/`).
   bot on plugin enable and reconnects with backoff whenever the connection
   drops.
 
-Only one Minecraft server is expected to be connected at a time. If a new
-connection authenticates while another is active, the bot closes the old one.
+The bot can hold one connection per configured `server_id` simultaneously
+(see "Multi-Server" below). If a new connection authenticates with a
+`server_id` that already has an active connection, the bot closes the old
+one for *that server_id only* - other servers' connections are unaffected.
 
 ## Transport
 
@@ -26,22 +36,33 @@ connection authenticates while another is active, the bot closes the old one.
 
 ## Authentication
 
-Both sides are configured with the same `bridge.secret` shared token.
+Both sides are configured with a shared secret token (`bridge.secret` on each
+side; see "Multi-Server" if the bot has more than one `links[]` entry).
 
 1. Immediately after the WebSocket handshake completes, the client must send:
 
    ```json
-   {"type": "auth", "token": "<shared-secret>"}
+   {"type": "auth", "token": "<shared-secret>", "server_id": "<id>"}
    ```
 
-2. If the token matches, the server replies:
+   `server_id` is optional but strongly recommended:
+   - If present, the bot looks up the link configured with that `server_id`
+     and checks `token` against that link's own secret.
+   - If omitted, the bot accepts the connection only if it has exactly one
+     configured link (single-server setups, including plugins predating
+     this field); with more than one link configured, an omitted
+     `server_id` is rejected as ambiguous.
+
+2. If authentication succeeds, the server replies:
 
    ```json
    {"type": "auth_ok"}
    ```
 
-3. If the token is missing, wrong, or no message arrives within
-   `bridge.auth_timeout` seconds (default 10s), the server replies:
+3. If the token is missing/wrong, the `server_id` doesn't match any
+   configured link, `server_id` was omitted while multiple links are
+   configured, or no message arrives within `bridge.auth_timeout` seconds
+   (default 10s), the server replies:
 
    ```json
    {"type": "auth_fail"}
@@ -58,7 +79,7 @@ Both sides are configured with the same `bridge.secret` shared token.
 
 | type           | fields                          | meaning                                   |
 |----------------|----------------------------------|--------------------------------------------|
-| `auth`         | `token`                          | Authenticate the connection.               |
+| `auth`         | `token`, `server_id` (optional)   | Authenticate the connection.               |
 | `chat`         | `player`, `message`              | A player sent a chat message in-game.      |
 | `server_start` | `server_name`                    | The server finished starting up.           |
 | `server_stop`  | `server_name`                    | The server is shutting down.               |
@@ -120,12 +141,50 @@ through the same escaping and are sent to `discord.notify_channel_id` with
 ## Fault Tolerance
 
 - **Bot offline / unreachable**: the plugin's WebSocket I/O runs off the
-  server main thread. Sends are best-effort and non-blocking; if the socket
-  isn't open and authenticated, the message is simply dropped. The plugin
+  server main thread and sends are non-blocking. If the socket isn't open
+  and authenticated (or the send itself fails), the message is queued
+  instead of dropped, bounded by `bridge.max-queue-size` (oldest entries are
+  evicted first once full) and flushed in order once connected again,
+  skipping any entry older than `bridge.max-queue-age-seconds`. The plugin
   retries connecting on an exponential backoff (`bridge.reconnect.initial-delay`
-  up to `bridge.reconnect.max-delay`, in seconds).
-- **Plugin offline / unreachable**: the bot drops outgoing chat/notify
-  messages if no plugin is currently connected, without raising.
+  up to `bridge.reconnect.max-delay`, in seconds). It also pings the bot
+  every `bridge.connection-lost-timeout-seconds` and reconnects if no pong
+  arrives in time, so a half-open/blackholed TCP connection is detected
+  promptly instead of appearing open indefinitely.
+- **Plugin offline / unreachable**: the bot queues outgoing chat messages
+  for that `server_id` (same bounding/TTL behavior as above, configured via
+  `bridge.max_queue_size`/`bridge.max_queue_age_seconds` in the bot's
+  config.yml) instead of dropping them, and flushes the queue once that
+  server_id reconnects.
+- **Reconnect race window**: the bot only replaces or clears a given
+  `server_id`'s connection slot while holding that server_id's internal
+  lock, and flushes its queue as part of the same locked registration - so a
+  message sent while a reconnect is in flight is always either delivered to
+  the fresh connection or queued, never silently lost in the gap.
+- **A single bad message never tears down the connection**: if relaying one
+  inbound message to Discord fails (e.g. a transient Discord API error),
+  the bot logs and drops that one message but keeps the connection - and the
+  rest of the session - alive.
 - **Shutdown**: on `onDisable`, the plugin sends `server_stop` and closes the
   socket on a background thread bounded by `bridge.shutdown-flush-timeout-ms`
   (default 3000ms), so an unreachable bot cannot delay server shutdown.
+
+## Multi-Server
+
+A single Discord bot process can bridge multiple Minecraft servers, each to
+its own Discord channel(s), by configuring multiple entries under `links:`
+in the bot's `config.yml` (see `discord-bot/config.example.yml`). Each entry
+has its own `server_id`, `secret`, `chat_channel_id`, and `notify_channel_id`.
+
+- `server_id` is a stable identifier - distinct from the cosmetic
+  `server.name` used in start/stop notifications - that must be unique
+  among all plugin instances pointed at one bot, and must equal one of the
+  bot's configured `links[].server_id` values exactly. Configure it via
+  `server.id` in the plugin's `config.yml`.
+- A bot with no `links:` configured (today's single-server config.yml shape)
+  behaves as if it had exactly one link with `server_id: "default"`; a
+  plugin with no `server.id` configured defaults to `"default"` as well, so
+  existing single-server deployments keep working unchanged.
+- Each server_id's connection, queue, and Discord channel routing are fully
+  independent - reconnecting, disconnecting, or flooding one server_id never
+  affects another's delivery.

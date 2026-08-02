@@ -9,6 +9,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.net.URI;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
@@ -31,6 +33,17 @@ public final class BridgeManager {
     private volatile boolean shuttingDown = false;
     private volatile int reconnectTaskId = -1;
 
+    /**
+     * Messages that couldn't be sent immediately (not connected/authenticated,
+     * or the send itself failed), held so they can be flushed once the
+     * connection to the Discord bot is (re)established instead of being lost.
+     * Bounded to {@link BridgeConfig#maxQueueSize()}, oldest dropped first.
+     */
+    private final Deque<TimestampedMessage> outboundQueue = new ArrayDeque<>();
+
+    private record TimestampedMessage(long enqueuedAtNanos, String json) {
+    }
+
     public BridgeManager(JavaPlugin plugin, BridgeConfig config) {
         this.plugin = plugin;
         this.config = config;
@@ -44,7 +57,8 @@ public final class BridgeManager {
         }
         try {
             URI uri = new URI("ws://" + config.host() + ":" + config.port());
-            BridgeWebSocketClient newClient = new BridgeWebSocketClient(uri, this, config.secret(), logger);
+            BridgeWebSocketClient newClient = new BridgeWebSocketClient(uri, this, config.secret(), config.serverId(), logger);
+            newClient.setConnectionLostTimeout(config.connectionLostTimeoutSeconds());
             client.set(newClient);
             newClient.connect();
         } catch (Exception e) {
@@ -55,6 +69,7 @@ public final class BridgeManager {
 
     void onConnected() {
         reconnectDelaySeconds.set(config.reconnectInitialDelaySeconds());
+        flushQueue();
     }
 
     void onDisconnected() {
@@ -109,13 +124,66 @@ public final class BridgeManager {
         sendBestEffort(Json.object("type", "player_leave", "player", player));
     }
 
+    /**
+     * Sends a message if currently connected and authenticated; otherwise (or
+     * if the send itself throws) queues it so it is not lost, to be flushed
+     * once the connection to the Discord bot is (re)established.
+     */
     private void sendBestEffort(String json) {
         BridgeWebSocketClient current = client.get();
         if (current != null && current.isOpen() && current.isAuthenticated()) {
             try {
                 current.send(json);
+                return;
             } catch (Exception e) {
-                logger.fine("[MCDiscordBridge] Failed to send bridge message: " + e.getMessage());
+                logger.info("[MCDiscordBridge] Failed to send bridge message, queueing: " + e.getMessage());
+            }
+        }
+        enqueue(json);
+    }
+
+    private void enqueue(String json) {
+        synchronized (outboundQueue) {
+            if (outboundQueue.size() >= config.maxQueueSize()) {
+                outboundQueue.pollFirst();
+            }
+            outboundQueue.addLast(new TimestampedMessage(System.nanoTime(), json));
+            logger.info("[MCDiscordBridge] Discord bot not connected; queued message (queue size="
+                    + outboundQueue.size() + ").");
+        }
+    }
+
+    /** Flushes queued messages in order, dropping any that are too stale. Called on successful auth. */
+    private void flushQueue() {
+        long maxAgeNanos = (long) (config.maxQueueAgeSeconds() * 1_000_000_000L);
+        for (;;) {
+            TimestampedMessage next;
+            synchronized (outboundQueue) {
+                next = outboundQueue.pollFirst();
+            }
+            if (next == null) {
+                return;
+            }
+            long age = System.nanoTime() - next.enqueuedAtNanos();
+            if (age > maxAgeNanos) {
+                logger.info("[MCDiscordBridge] Dropping stale queued message (age=" + (age / 1_000_000_000L) + "s).");
+                continue;
+            }
+            BridgeWebSocketClient current = client.get();
+            if (current == null || !current.isOpen() || !current.isAuthenticated()) {
+                synchronized (outboundQueue) {
+                    outboundQueue.addFirst(next);
+                }
+                return;
+            }
+            try {
+                current.send(next.json());
+            } catch (Exception e) {
+                logger.info("[MCDiscordBridge] Failed to flush queued message, re-queueing: " + e.getMessage());
+                synchronized (outboundQueue) {
+                    outboundQueue.addFirst(next);
+                }
+                return;
             }
         }
     }

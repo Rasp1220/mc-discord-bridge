@@ -15,6 +15,7 @@ logger = logging.getLogger("bridge.main")
 
 async def main() -> None:
     config = load_config()
+    logger.info("Configured Minecraft servers: %s", [link.server_id for link in config.links])
 
     bot = DiscordBridgeBot(config)
     server = BridgeServer(
