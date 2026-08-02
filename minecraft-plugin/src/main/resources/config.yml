@@ -2,7 +2,9 @@
 bridge:
   host: "127.0.0.1"
   port: 8765
-  # Shared secret token. Must match the discord-bot's config.yml -> bridge.secret exactly.
+  # Shared secret token. Must match the discord-bot's config.yml. If the bot
+  # is bridging multiple servers (its config.yml has a `links:` section),
+  # this must match this server's own links[].secret entry.
   secret: "CHANGE_ME_SHARED_SECRET"
   # Reconnect backoff (seconds) used while the Discord bot is unreachable.
   reconnect:
@@ -10,10 +12,24 @@ bridge:
     max-delay: 60
   # Milliseconds to wait for the socket to flush when sending the shutdown notice.
   shutdown-flush-timeout-ms: 3000
+  # Seconds between keepalive pings to the Discord bot; the connection is
+  # considered dead (and reconnected) if no pong arrives within this time.
+  connection-lost-timeout-seconds: 30
+  # Chat/status messages queued (oldest dropped first) while disconnected
+  # from the Discord bot, flushed in order on reconnect.
+  max-queue-size: 50
+  # Queued messages older than this are dropped rather than delivered late.
+  max-queue-age-seconds: 30
 
 server:
   # Friendly name for this server, included in start/stop notifications.
+  # Purely cosmetic - renaming this does not affect bridge routing.
   name: "Minecraft Server"
+  # Stable identifier for this server. Only relevant if the Discord bot is
+  # bridging multiple servers, in which case this must match one of the
+  # bot's config.yml -> links[].server_id entries exactly. Leave as "default"
+  # for a single-server setup.
+  id: "default"
 
 format:
   # Placeholders: {player} {message}

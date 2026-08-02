@@ -1,6 +1,11 @@
 # Copy this file to config.yml and fill in the values for your setup.
 # The Discord bot token itself is NOT stored here - see .env.example.
 
+# --- Single-server setup (default) ---------------------------------------
+# This is all you need if you're bridging exactly one Minecraft server. If
+# you add a `links:` section below (for multiple servers), these three
+# scalar fields are ignored entirely - do not mix the two shapes.
+
 discord:
   # Channel that Minecraft chat is bridged to/from.
   chat_channel_id: 0
@@ -17,16 +22,40 @@ bridge:
   host: "0.0.0.0"
   port: 8765
   # Shared secret token. Must match minecraft-plugin's config.yml -> bridge.secret exactly.
+  # Ignored (only links[].secret matters) when a `links:` section is set below.
   secret: "CHANGE_ME_SHARED_SECRET"
   # Seconds to wait for the auth message after a plugin connects before
   # dropping the connection.
   auth_timeout: 10
+  # Outgoing messages queue (per Minecraft server) while that server isn't
+  # connected, instead of being dropped. Bounded by max_queue_size (oldest
+  # entries are dropped once full) and flushed on reconnect, skipping any
+  # entry older than max_queue_age_seconds.
+  max_queue_size: 50
+  max_queue_age_seconds: 30
+
+# --- Multi-server setup (optional) ----------------------------------------
+# Uncomment to bridge more than one Minecraft server to different Discord
+# channels from a single bot process. Each entry needs a unique server_id
+# that must match the corresponding minecraft-plugin instance's
+# `server.id` in its config.yml, and its own secret.
+#
+# links:
+#   - server_id: "survival"
+#     secret: "CHANGE_ME_SURVIVAL_SECRET"
+#     chat_channel_id: 111111111111111111
+#     notify_channel_id: 111111111111111111
+#   - server_id: "creative"
+#     secret: "CHANGE_ME_CREATIVE_SECRET"
+#     chat_channel_id: 222222222222222222
+#     notify_channel_id: 222222222222222222
 
 format:
   # Placeholders: {player} {message}
   minecraft_to_discord: "**{player}**: {message}"
-  # Placeholders: {user} {message}
-  discord_to_minecraft: "[Discord] [{user}] {message}"
+  # Note: the Discord -> Minecraft direction is formatted by the plugin, via
+  # its own config.yml -> format.discord-to-minecraft. There is no
+  # equivalent setting here.
   # Placeholder: {player}. Sent to notify_channel_id when a player joins/leaves.
   player_join: "\U0001F7E2 **{player}** が参加しました"
   player_leave: "\U0001F534 **{player}** が退出しました"
